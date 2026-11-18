@@ -69,8 +69,7 @@ header .sp{flex:1}
 .sec h3 .sp{flex:1}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:#fbfaf8;border-radius:99px;padding:3px 11px;font-size:13px;display:inline-flex;align-items:center;gap:4px;position:relative}
-.chip.g{background:var(--uniq-soft);border-color:#ecd3b3}
-.chip.m{background:var(--mine-soft);border-color:#d3cdf0}
+.brk{flex-basis:100%;height:2px}
 .chip:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .chip sup{font-size:10px;opacity:.6}
@@ -365,12 +364,13 @@ function renderSecs(){
   const cats = multi ? S.cats : S.cats.filter(c => c.id === UI.tab);
   let html = '';
   cats.forEach(c => {
-    const items = c.items.map((it, i) => ({it, i})).filter(({it}) => (UI.filter === 'all' || it.k === UI.filter) && (!q || it.t.includes(q)));
+    const items = c.items.map((it, i) => ({it, i})).filter(({it}) => (UI.filter === 'all' || it.k === UI.filter) && (!q || it.t.includes(q)))
+      .sort((a, b) => 'bgm'.indexOf(a.it.k) - 'bgm'.indexOf(b.it.k));
     if(!items.length && !UI.editKw) return;
-    const chips = items.map(({it, i}) => {
+    const chips = items.map(({it, i}, idx) => {
       const on = sel.has(it.t);
       const n = (use.get(it.t) || 0) - (on ? 1 : 0);
-      return `<button class="chip ${it.k} ${on ? 'on' : ''}" data-c="${c.id}" data-i="${i}">${esc(it.t)}${n > 0 ? `<sup>${n}</sup>` : ''}${UI.editKw ? '<span class="x" data-delkw="1">✕</span>' : ''}</button>`;
+      return `${idx > 0 && items[idx - 1].it.k !== it.k ? '<span class="brk"></span>' : ''}<button class="chip ${it.k} ${on ? 'on' : ''}" data-c="${c.id}" data-i="${i}">${esc(it.t)}${n > 0 ? `<sup>${n}</sup>` : ''}${UI.editKw ? '<span class="x" data-delkw="1">✕</span>' : ''}</button>`;
     }).join('');
     html += `<section class="sec"><h3>${esc(c.name)}<small>${c.items.length}개</small><span class="sp"></span>${UI.editKw ? `<button class="btn sm" data-renamecat="${c.id}">이름 변경</button><button class="btn sm danger" data-delcat="${c.id}">분류 삭제</button>` : ''}</h3><div class="chips">${chips}</div>${UI.editKw ? `<form class="addkw" data-addto="${c.id}"><input placeholder="키워드 추가 (쉼표로 여러 개)"><button class="btn sm">추가</button></form>` : ''}</section>`;
   });
