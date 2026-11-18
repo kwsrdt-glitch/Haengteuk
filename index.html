@@ -122,7 +122,8 @@ dialog .row{justify-content:flex-end;margin-top:12px}
     <details class="menu" id="menu">
       <summary>더보기</summary>
       <div class="pop">
-        <button id="mCsv">CSV로 내보내기 (엑셀용)</button>
+        <button id="mCsv">CSV 내보내기 (카테고리를 한 칸에 정리)</button>
+        <button id="mCsv2">CSV 내보내기 (카테고리를 열로 분리)</button>
         <button id="mCopyAll">전체 복사 (엑셀에 붙여넣기)</button>
         <button id="mBackup">백업 파일 저장 (JSON)</button>
         <button id="mRestore">백업 파일 불러오기</button>
@@ -312,6 +313,23 @@ function resultLine(s){
   return parts.join(', ');
 }
 
+/* 키워드가 어느 카테고리에서 선택됐는지 (선택 당시 카테고리를 기억, 없으면 목록에서 찾음) */
+function catLabel(s, text){
+  const id = s.src && s.src[text];
+  if(id === '_free') return '직접 입력';
+  const byId = id && S.cats.find(c => c.id === id);
+  if(byId) return byId.name;
+  const found = S.cats.find(c => c.items.some(i => i.t === text));
+  return found ? found.name : '직접 입력';
+}
+function groupByCat(s){
+  const order = S.cats.map(c => c.name).concat('직접 입력');
+  const m = new Map();
+  s.kw.forEach(k => { const n = catLabel(s, k); if(!m.has(n)) m.set(n, []); m.get(n).push(k); });
+  return [...m.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([name, items]) => ({name, items}));
+}
+const catSummary = s => groupByCat(s).map(g => `[${g.name}] ${g.items.join(', ')}`).join(' / ');
+
 /* ---------- 렌더: 명렬표 ---------- */
 function renderStudents(){
   const ul = $('#slist');
@@ -389,7 +407,7 @@ function renderRight(){
     <div class="who">${esc(s.num)}번 ${esc(s.name)}<small>${s.kw.length}개 선택</small></div>
     <div>
       <label class="lb">선택한 키워드 (끌어서 순서 바꾸기, 클릭하면 제거)</label>
-      <div class="rchips" id="rchips">${s.kw.length ? s.kw.map((k, i) => `<span class="chip" draggable="true" data-ri="${i}">${esc(k)}<span class="x">✕</span></span>`).join('') : '<span class="ph">키워드를 눌러 선택하세요</span>'}</div>
+      <div class="rchips" id="rchips">${s.kw.length ? s.kw.map((k, i) => `<span class="chip" draggable="true" data-ri="${i}" title="${esc(catLabel(s, k))}">${esc(k)}<span class="x">✕</span></span>`).join('') : '<span class="ph">키워드를 눌러 선택하세요</span>'}</div>
     </div>
     <div>
       <label class="lb">직접 입력해서 이 학생에게 추가</label>
@@ -420,10 +438,11 @@ function renderAll(){ renderStudents(); renderTabs(); renderSecs(); renderRight(
 
 /* ---------- 동작 ---------- */
 function selectStudent(id){ S.curId = id; save(); renderAll(); }
-function toggleKw(text){
+function toggleKw(text, catId){
   const s = cur(); if(!s){ toast('먼저 왼쪽에서 학생을 선택하세요'); return; }
   const i = s.kw.indexOf(text);
-  if(i >= 0) s.kw.splice(i, 1); else s.kw.push(text);
+  if(!s.src) s.src = {};
+  if(i >= 0){ s.kw.splice(i, 1); delete s.src[text]; } else { s.kw.push(text); if(catId) s.src[text] = catId; }
   save(); renderStudents(); renderTabs(); renderSecs(); renderRight();
 }
 function copyText(text, msg){
@@ -512,7 +531,7 @@ $('#secs').addEventListener('click', e => {
   const c = S.cats.find(x => x.id === chip.dataset.c); const it = c && c.items[+chip.dataset.i]; if(!it) return;
   if(UI.editKw && e.target.closest('[data-delkw]')){ c.items.splice(+chip.dataset.i, 1); save(); renderTabs(); renderSecs(); return; }
   if(UI.editKw) return;
-  toggleKw(it.t);
+  toggleKw(it.t, c.id);
 });
 $('#secs').addEventListener('submit', e => {
   e.preventDefault();
@@ -540,7 +559,8 @@ $('#right').addEventListener('click', e => {
   else if(id === 'btnClear'){ if(!s.kw.length && !(s.memo || '').trim()) return; if(confirm(`${s.name} 학생의 키워드와 메모를 비울까요?`)){ s.kw = []; s.memo = ''; save(); renderAll(); } }
   else if(id === 'btnPrevCopy'){
     const p = S.students[S.students.indexOf(s) - 1]; if(!p) return;
-    let n = 0; p.kw.forEach(k => { if(!s.kw.includes(k)){ s.kw.push(k); n++; } });
+    let n = 0; if(!s.src) s.src = {};
+    p.kw.forEach(k => { if(!s.kw.includes(k)){ s.kw.push(k); n++; const id = p.src && p.src[k]; if(id) s.src[k] = id; } });
     save(); renderAll(); toast(`${n}개를 가져왔습니다`);
   }
   else if(id === 'btnPrev' || id === 'btnNext'){
@@ -551,7 +571,7 @@ $('#right').addEventListener('input', e => { const s = cur(); if(s && e.target.i
 $('#right').addEventListener('submit', e => {
   e.preventDefault(); const s = cur(); if(!s) return;
   const inp = $('#freeIn'); const v = inp.value.trim(); if(!v) return;
-  if(!s.kw.includes(v)) s.kw.push(v);
+  if(!s.kw.includes(v)){ s.kw.push(v); if(!s.src) s.src = {}; s.src[v] = '_free'; }
   save(); renderStudents(); renderTabs(); renderSecs(); renderRight(); $('#freeIn').focus();
 });
 $('#right').addEventListener('dragstart', e => { const c = e.target.closest('[data-ri]'); if(c){ dragIdx = +c.dataset.ri; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragIdx)); } });
@@ -574,13 +594,25 @@ function download(name, text, type){
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 const closeMenu = () => $('#menu').removeAttribute('open');
+const csvq = v => '"' + String(v).replace(/"/g, '""') + '"';
+const oneLine = v => String(v).replace(/[\r\n\t]+/g, ' ');
 $('#mCsv').onclick = () => {
   closeMenu();
-  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-  const rows = [['번호', '이름', '결과'].map(q).join(',')].concat(S.students.map(s => [s.num, s.name, resultLine(s)].map(q).join(',')));
+  const rows = [['번호', '이름', '결과(키워드 한 줄)', '카테고리별 정리', '메모'].map(csvq).join(',')]
+    .concat(S.students.map(s => [s.num, s.name, resultLine(s), catSummary(s), s.memo || ''].map(csvq).join(',')));
   download('행특_키워드.csv', '﻿' + rows.join('\r\n'), 'text/csv;charset=utf-8');
 };
-$('#mCopyAll').onclick = () => { closeMenu(); copyText(S.students.map(s => `${s.num}\t${s.name}\t${resultLine(s)}`).join('\n'), '전체를 복사했습니다. 엑셀에 붙여넣으세요'); };
+$('#mCsv2').onclick = () => {
+  closeMenu();
+  const names = S.cats.map(c => c.name).concat('직접 입력');
+  const used = names.filter(n => S.students.some(s => s.kw.some(k => catLabel(s, k) === n)));
+  const rows = [['번호', '이름', ...used, '메모'].map(csvq).join(',')].concat(S.students.map(s => {
+    const g = new Map(groupByCat(s).map(x => [x.name, x.items.join(', ')]));
+    return [s.num, s.name, ...used.map(n => g.get(n) || ''), s.memo || ''].map(csvq).join(',');
+  }));
+  download('행특_키워드_카테고리별.csv', '﻿' + rows.join('\r\n'), 'text/csv;charset=utf-8');
+};
+$('#mCopyAll').onclick = () => { closeMenu(); copyText(S.students.map(s => [s.num, s.name, resultLine(s), catSummary(s)].map(oneLine).join('\t')).join('\n'), '전체를 복사했습니다. 엑셀에 붙여넣으세요 (번호·이름·결과·카테고리별 정리)'); };
 $('#mBackup').onclick = () => { closeMenu(); download('행특_백업.json', JSON.stringify(S), 'application/json'); };
 $('#mRestore').onclick = () => { closeMenu(); $('#fileRestore').click(); };
 $('#fileRestore').onchange = e => {
