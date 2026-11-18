@@ -69,7 +69,6 @@ header .sp{flex:1}
 .sec h3 .sp{flex:1}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:#fbfaf8;border-radius:99px;padding:3px 11px;font-size:13px;display:inline-flex;align-items:center;gap:4px;position:relative}
-.brk{flex-basis:100%;height:2px}
 .chip:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .chip sup{font-size:10px;opacity:.6}
@@ -115,7 +114,7 @@ dialog .row{justify-content:flex-end;margin-top:12px}
 <div class="app">
   <header>
     <h1>행특 키워드 조합기</h1>
-    <span class="note">데이터는 이 브라우저에만 저장됩니다</span>
+    <span class="note" id="saveNote">이 브라우저에 자동 저장됩니다</span>
     <span class="sp"></span>
     <button class="btn" id="btnEditKw">키워드 편집</button>
     <details class="menu" id="menu">
@@ -291,12 +290,20 @@ const DEFAULT_PROMPT = `아래 키워드를 바탕으로 중학교 생활기록�
 - 키워드에 없는 구체적인 사실이나 수상 실적, 활동 내용은 지어내지 않기`;
 const getPrompt = () => (S.prompt && S.prompt.trim()) ? S.prompt : DEFAULT_PROMPT;
 const buildPrompt = s => getPrompt().trim() + '\n\n키워드: ' + resultLine(s);
-const UI = {filter: 'all', tab: 'c1', q: '', onlyTodo: false, editKw: false, editRoster: false};
+const UI = {filter: 'all', tab: 'all', q: '', onlyTodo: false, editKw: false, editRoster: false};
 function load(){
   try{ const v = JSON.parse(localStorage.getItem(KEY)); if(v && Array.isArray(v.students) && Array.isArray(v.cats)) return v; }catch(e){}
   return null;
 }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+let saveOk = true;
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); saveOk = true; }catch(e){ saveOk = false; }
+  const n = document.getElementById('saveNote');
+  if(n){
+    n.textContent = saveOk ? '이 브라우저에 자동 저장됩니다 (다른 브라우저·기기와는 공유되지 않음)' : '⚠ 이 브라우저에서는 저장이 안 됩니다. 더보기 → 백업 파일 저장을 이용하세요';
+    n.style.color = saveOk ? '' : 'var(--danger)';
+  }
+}
 function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1600); }
 const cur = () => S.students.find(s => s.id === S.curId) || null;
 
@@ -370,7 +377,7 @@ function renderSecs(){
     const chips = items.map(({it, i}, idx) => {
       const on = sel.has(it.t);
       const n = (use.get(it.t) || 0) - (on ? 1 : 0);
-      return `${idx > 0 && items[idx - 1].it.k !== it.k ? '<span class="brk"></span>' : ''}<button class="chip ${it.k} ${on ? 'on' : ''}" data-c="${c.id}" data-i="${i}">${esc(it.t)}${n > 0 ? `<sup>${n}</sup>` : ''}${UI.editKw ? '<span class="x" data-delkw="1">✕</span>' : ''}</button>`;
+      return `<button class="chip ${it.k} ${on ? 'on' : ''}" data-c="${c.id}" data-i="${i}">${esc(it.t)}${n > 0 ? `<sup>${n}</sup>` : ''}${UI.editKw ? '<span class="x" data-delkw="1">✕</span>' : ''}</button>`;
     }).join('');
     html += `<section class="sec"><h3>${esc(c.name)}<small>${c.items.length}개</small><span class="sp"></span>${UI.editKw ? `<button class="btn sm" data-renamecat="${c.id}">이름 변경</button><button class="btn sm danger" data-delcat="${c.id}">분류 삭제</button>` : ''}</h3><div class="chips">${chips}</div>${UI.editKw ? `<form class="addkw" data-addto="${c.id}"><input placeholder="키워드 추가 (쉼표로 여러 개)"><button class="btn sm">추가</button></form>` : ''}</section>`;
   });
@@ -630,11 +637,11 @@ $('#fileRestore').onchange = e => {
 };
 $('#mResetKw').onclick = () => {
   closeMenu();
-  if(confirm('키워드 목록을 처음 상태로 되돌릴까요? 직접 추가·삭제한 키워드가 사라집니다. (학생별 선택은 유지됩니다)')){ S.cats = defaultCats(); UI.tab = S.cats[0].id; save(); renderAll(); }
+  if(confirm('키워드 목록을 처음 상태로 되돌릴까요? 직접 추가·삭제한 키워드가 사라집니다. (학생별 선택은 유지됩니다)')){ S.cats = defaultCats(); UI.tab = 'all'; save(); renderAll(); }
 };
 $('#mResetAll').onclick = () => {
   closeMenu();
-  if(confirm('명렬표와 선택한 키워드를 포함해 모든 데이터를 지울까요? 되돌릴 수 없습니다.')){ S = {students: [], cats: defaultCats(), nextId: 1, curId: null}; UI.tab = S.cats[0].id; save(); renderAll(); }
+  if(confirm('명렬표와 선택한 키워드를 포함해 모든 데이터를 지울까요? 되돌릴 수 없습니다.')){ S = {students: [], cats: defaultCats(), nextId: 1, curId: null}; UI.tab = 'all'; save(); renderAll(); }
 };
 document.addEventListener('click', e => { if(!e.target.closest('#menu')) closeMenu(); });
 
@@ -658,7 +665,9 @@ if(S.dv !== 2){ /* 기본 키워드 목록 갱신: 직접 추가한 키워드와
   old.filter(c => /^u/.test(c.id)).forEach(c => fresh.push(c));
   S.cats = fresh; S.dv = 2; save();
 }
-if(!S.cats.some(c => c.id === UI.tab)) UI.tab = S.cats[0] ? S.cats[0].id : 'all';
+if(UI.tab !== 'all' && !S.cats.some(c => c.id === UI.tab)) UI.tab = 'all';
+save();
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); }catch(e){}
 if(!S.curId && S.students[0]) S.curId = S.students[0].id;
 renderAll();
 if(!S.students.length) setTimeout(() => $('#btnPaste').click(), 200);
